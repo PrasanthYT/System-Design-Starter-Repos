@@ -157,6 +157,30 @@ npm test
 # 4. Repeat until all 20 pass
 ```
 
+## Retrieval-Model Decisions
+
+### Decision 1: Native vector embedding storage
+Spec said: Store each incident chunk embedding for vector similarity retrieval.
+Schema decided: `incident_chunks.embedding` is `vector(1536) NOT NULL`.
+Reason: pgvector's native type supports cosine-distance operators and the required HNSW index; text cannot be compared or indexed as an embedding.
+
+### Decision 2: Cascade incident deletion
+Spec said: Each chunk must reference its parent incident and be removed when that incident is deleted.
+Schema decided: `incident_chunks.incident_id` is a `BIGINT NOT NULL` foreign key with `ON DELETE CASCADE`.
+Reason: `incidents.id` is `BIGSERIAL`/`bigint`, and orphaned chunks have no meaning after their incident is removed.
+
+### Decision 3: Denormalised filter metadata
+Spec said: Retrieval must filter by team and severity alongside similarity ranking.
+Schema decided: Store `team_id BIGINT NOT NULL` and `severity TEXT NOT NULL` on every chunk.
+Reason: Denormalising the filter fields keeps hybrid retrieval access-pattern-driven and avoids requiring a join before filtering candidate vectors.
+
+## Rejected Shape
+
+### Shape: Single embedding column on `incidents`
+What it was: An `embedding` column attached directly to the incident row.
+Why rejected: Long incident descriptions must be split into multiple independently searchable chunks.
+What would break: One vector per incident cannot represent or retrieve the relevant portion of a multi-paragraph incident.
+
 ---
 
 ## Common Errors
