@@ -2,9 +2,7 @@
 
 ## What This Is
 
-The platform is shipping its first AI feature: surface the **three most similar past incidents** when a responder opens a new one. A colleague drafted the **retrieval schema** — the `incident_chunks` table that holds embedded incident text for vector similarity search — in `migrations/001_retrieval_schema.sql`. It has **intentional errors**: the embedding is stored as plain `TEXT` instead of a `vector`, the foreign key is the wrong type with no `ON DELETE`, the filter-metadata columns are missing, there are no indexes, and a rejected shape (a single embedding column on `incidents`) made it in.
-
-Your job: **fix the retrieval schema so it correctly implements the retrieval spec** in the assignment question. The spec is the source of truth.
+The platform is shipping its first AI feature: surface the **three most similar past incidents** when a responder opens a new one. The repaired schema stores chunk-level embeddings for vector similarity search in `migrations/001_retrieval_schema.sql`.
 
 When you're done, all **20 pgTAP tests** must pass.
 
@@ -142,6 +140,30 @@ CREATE INDEX idx_incident_chunks_incident_id
 
 ---
 
+## Retrieval-Model Decisions
+
+### Decision 1: Embedding storage
+Spec said: Store each incident-text chunk as a 1536-dimensional embedding for similarity retrieval.
+Schema decided: `incident_chunks.embedding vector(1536) NOT NULL`, with an HNSW cosine index.
+Reason: pgvector preserves numeric vector operations and supports the required approximate nearest-neighbour search.
+
+### Decision 2: ON DELETE behavior
+Spec said: A chunk must reference its incident and must not outlive it.
+Schema decided: `incident_id BIGINT NOT NULL REFERENCES incidents(id) ON DELETE CASCADE`.
+Reason: Cascading deletion prevents orphaned chunks that could otherwise be retrieved without their source incident.
+
+### Decision 3: Filter-metadata denormalisation
+Spec said: Retrieval filters need team and severity metadata alongside similarity ranking.
+Schema decided: Store `team_id BIGINT NOT NULL` and `severity TEXT NOT NULL` on every chunk.
+Reason: Denormalised filter fields let retrieval apply common filters directly on the chunk table without joining incidents.
+
+## Rejected Shape
+
+### Shape: Single embedding on `incidents`
+What it was: One `incidents.embedding` column intended to represent the entire incident description.
+Why rejected: Long, multi-paragraph descriptions need multiple chunks, each with its own embedding and retrieval position.
+What would break: A single vector would collapse the incident's separate topics, preventing chunk-level matching and reducing retrieval granularity.
+
 ## Workflow
 
 ```bash
@@ -190,33 +212,7 @@ git add migrations/001_retrieval_schema.sql README.md
 git commit -m "fix: repair the incident retrieval schema to match the spec"
 ```
 
-2. Update this `README.md` with exactly **3 retrieval-model decisions** and **1 rejected shape**:
-
-```markdown
-## Retrieval-Model Decisions
-
-### Decision 1: [Embedding storage decision]
-Spec said: ...
-Schema decided: ...
-Reason: ...
-
-### Decision 2: [ON DELETE decision]
-Spec said: ...
-Schema decided: ...
-Reason: ...
-
-### Decision 3: [Filter-metadata / denormalisation decision]
-Spec said: ...
-Schema decided: ...
-Reason: ...
-
-## Rejected Shape
-
-### Shape: [name what you removed or rejected]
-What it was: ...
-Why rejected: ...
-What would break: ...
-```
+2. Ensure this `README.md` documents exactly **3 retrieval-model decisions** and **1 rejected shape**.
 
 3. Push and open a PR:
 ```bash
