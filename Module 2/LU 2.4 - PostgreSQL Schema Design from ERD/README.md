@@ -169,6 +169,30 @@ npm test
 
 Each time you run `db:reset`, the database is wiped and recreated from your current schema file. This means each run is a clean slate — no leftover state.
 
+## ERD-to-Schema Decisions
+
+### Decision 1: UUID identifiers
+ERD said: Entity and relationship identifiers use UUIDs.
+Schema decided: Every primary key and foreign key is `UUID`, with primary keys defaulting to `gen_random_uuid()`.
+Reason: UUIDs provide stable, non-sequential identifiers across services and keep all relationships type-consistent.
+
+### Decision 2: Foreign-key deletion behavior
+ERD said: Related records must follow the lifecycle rules defined for each relationship.
+Schema decided: Ownership relationships use `ON DELETE CASCADE`, optional assignment uses `ON DELETE SET NULL`, and authorship uses `ON DELETE RESTRICT`.
+Reason: This prevents orphaned dependent records while preserving historical authors and safely clearing optional assignees.
+
+### Decision 3: Timestamp defaults
+ERD said: Required creation timestamps are recorded when rows are created; resolution and deactivation timestamps are optional.
+Schema decided: Every `created_at` is `TIMESTAMPTZ NOT NULL DEFAULT NOW()`, while `resolved_at` and `deactivated_at` remain nullable.
+Reason: Time-zone-aware defaults provide consistent audit data without inventing lifecycle events that have not happened.
+
+## Rejected Table Shape
+
+### Shape: `tickets.tags TEXT[]`
+What it was: A tags array stored directly on each ticket.
+Why rejected: Tags are reusable entities and ticket-tag assignment is a many-to-many relationship.
+What would break: An array cannot enforce tag identity or relational foreign keys; the normalized `tags` and `ticket_tags` tables provide those guarantees.
+
 ---
 
 ## Common Errors
